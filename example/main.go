@@ -8,7 +8,7 @@ import (
 
 	_ "net/http/pprof"
 
-	"github.com/felixge/fgprof"
+	"github.com/zingneo/fgprof"
 )
 
 const (
