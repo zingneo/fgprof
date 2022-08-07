@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/google/pprof/profile"
@@ -45,10 +46,9 @@ func writeFolded(w io.Writer, s map[string]int) error {
 func toPprof(s map[string]int, hz int) *profile.Profile {
 	functionID := uint64(1)
 	locationID := uint64(1)
-	line := int64(1)
 
 	p := &profile.Profile{}
-	m := &profile.Mapping{ID: 1, HasFunctions: true}
+	m := &profile.Mapping{ID: 1, HasFunctions: true, HasLineNumbers: true, HasFilenames: true}
 	p.Period = int64(1e9 / hz) // Number of nanoseconds between samples.
 	p.Mapping = []*profile.Mapping{m}
 	p.SampleType = []*profile.ValueType{
@@ -70,21 +70,25 @@ func toPprof(s map[string]int, hz int) *profile.Profile {
 			},
 		}
 		for _, fnName := range strings.Split(stack, ";") {
+			fl := strings.SplitN(fnName, ":", 3) // func, lineno, file
+			line, _ := strconv.ParseInt(fl[1], 10, 64)
+			// Serious lack of error handling...
+
 			function := &profile.Function{
-				ID:   functionID,
-				Name: fnName,
+				ID:       functionID,
+				Name:     fl[0],
+				Filename: fl[2],
 			}
 			p.Function = append(p.Function, function)
 
 			location := &profile.Location{
 				ID:      locationID,
 				Mapping: m,
-				Line:    []profile.Line{{Function: function}},
+				Line:    []profile.Line{{Function: function, Line: line}},
 			}
+
 			p.Location = append(p.Location, location)
 			sample.Location = append([]*profile.Location{location}, sample.Location...)
-
-			line++
 
 			locationID++
 			functionID++
