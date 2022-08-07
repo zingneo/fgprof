@@ -4,6 +4,7 @@
 package fgprof
 
 import (
+	"fmt"
 	"io"
 	"runtime"
 	"strings"
@@ -39,7 +40,7 @@ func Start(w io.Writer, format Format) func() error {
 
 	return func() error {
 		stopCh <- struct{}{}
-		return writeFormat(w, stackCounts.HumanMap(prof.SelfFrame()), format, hz)
+		return writeFormat(w, stackCounts.HumanMap(format, prof.SelfFrame()), format, hz)
 	}
 }
 
@@ -118,7 +119,8 @@ func (s stackCounter) Update(p []runtime.StackRecord) {
 
 // @TODO(fg) create a better interface that avoids the pprof output having to
 // split the stacks using the `;` separator.
-func (s stackCounter) HumanMap(exclude *runtime.Frame) map[string]int {
+// Further hacked by adding :line:file to each if format is FormatPprof
+func (s stackCounter) HumanMap(format Format, exclude *runtime.Frame) map[string]int {
 	m := map[string]int{}
 outer:
 	for stack0, count := range s {
@@ -130,7 +132,11 @@ outer:
 			if frame.Entry == exclude.Entry {
 				continue outer
 			}
-			stack = append([]string{frame.Function}, stack...)
+			x := frame.Function
+			if format == FormatPprof {
+				x += fmt.Sprintf(":%d:%s", frame.Line, frame.File)
+			}
+			stack = append([]string{x}, stack...)
 			if !more {
 				break
 			}
