@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/pprof/profile"
 )
@@ -22,12 +23,12 @@ const (
 	FormatPprof Format = "pprof"
 )
 
-func writeFormat(w io.Writer, s map[string]int, f Format, hz int) error {
+func writeFormat(w io.Writer, s map[string]int, f Format, hz int, startTime, endTime time.Time) error {
 	switch f {
 	case FormatFolded:
 		return writeFolded(w, s)
 	case FormatPprof:
-		return toPprof(s, hz).Write(w)
+		return toPprof(s, hz, startTime, endTime).Write(w)
 	default:
 		return fmt.Errorf("unknown format: %q", f)
 	}
@@ -43,13 +44,15 @@ func writeFolded(w io.Writer, s map[string]int) error {
 	return nil
 }
 
-func toPprof(s map[string]int, hz int) *profile.Profile {
+func toPprof(s map[string]int, hz int, startTime, endTime time.Time) *profile.Profile {
 	functionID := uint64(1)
 	locationID := uint64(1)
 
 	p := &profile.Profile{}
 	m := &profile.Mapping{ID: 1, HasFunctions: true, HasLineNumbers: true, HasFilenames: true}
 	p.Period = int64(1e9 / hz) // Number of nanoseconds between samples.
+	p.TimeNanos = startTime.UnixNano()
+	p.DurationNanos = int64(endTime.Sub(startTime))
 	p.Mapping = []*profile.Mapping{m}
 	p.SampleType = []*profile.ValueType{
 		{
@@ -61,8 +64,13 @@ func toPprof(s map[string]int, hz int) *profile.Profile {
 			Unit: "nanoseconds",
 		},
 	}
+	p.PeriodType = &profile.ValueType{
+		Type: "wallclock",
+		Unit: "nanoseconds",
+	}
 
-	for stack, count := range s {
+	for _, stack := range sortedKeys(s) {
+		count := s[stack]
 		sample := &profile.Sample{
 			Value: []int64{
 				int64(count),
